@@ -10,18 +10,20 @@ import (
 
 // QueryBuilder used to generate couchDB queries
 type QueryBuilder struct {
-	ids   []string
-	fields []string
-	docType string
-	filters map[string]interface{}
-	conditions map[string]interface{}
+	ids          []string
+	fields       []string
+	docType      string
+	filters      map[string]interface{}
+	conditions   map[string]interface{}
 	combinations []*Combination
-	sort []map[string]string
-	hasSelector bool
-	hasLimit bool
-	hasSkip bool
-	limit int
-	skip int
+	sort         []map[string]string
+	hasSelector  bool
+	hasLimit     bool
+	hasSkip      bool
+	hasIndex     bool
+	limit        int
+	skip         int
+	index        string
 }
 
 // Filter used to filter on a single field
@@ -32,12 +34,12 @@ type Filter struct {
 
 // Combination used for and,or,nor,all operators
 type Combination struct {
-	Type CombinationType
-	Value []interface{}
-	Filters []Filter
-	Conditions []interface{}
+	Type         CombinationType
+	Value        []interface{}
+	Filters      []Filter
+	Conditions   []interface{}
 	Combinations []*Combination
-	Builder *QueryBuilder
+	Builder      *QueryBuilder
 }
 
 // CombinationType type of combination
@@ -45,25 +47,25 @@ type CombinationType string
 
 const (
 	// Matches if all the selectors in the array match.
-	AND   CombinationType = "$and"
+	AND CombinationType = "$and"
 	// Matches if any of the selectors in the array match. All selectors must use the same index.
-	OR   CombinationType = "$or"
+	OR CombinationType = "$or"
 	// Matches an array value if it contains all the elements of the argument array.
-	ALL   CombinationType = "$all"
+	ALL CombinationType = "$all"
 	// Matches if none of the selectors in the array match.
-	NOR   CombinationType = "$nor"
+	NOR CombinationType = "$nor"
 )
 
 // New create a new instance of the QueryBuilder
 func New() *QueryBuilder {
 	return &QueryBuilder{
-		filters:make(map[string]interface{}),
-		conditions:make(map[string]interface{}),
+		filters:    make(map[string]interface{}),
+		conditions: make(map[string]interface{}),
 	}
 }
 
 // Build constructs the query and outputs the final result
-func (builder *QueryBuilder) Build() (string,error) {
+func (builder *QueryBuilder) Build() (string, error) {
 
 	if !builder.hasSelector {
 		return "", errors.New("no doctype or filters have been added for the selector")
@@ -129,6 +131,11 @@ func (builder *QueryBuilder) Build() (string,error) {
 		queryMap["skip"] = builder.skip
 	}
 
+	// add limit
+	if builder.hasIndex {
+		queryMap["use_index"] = builder.index
+	}
+
 	bytes, err := json.Marshal(&queryMap)
 	if err != nil {
 		return "", err
@@ -136,13 +143,11 @@ func (builder *QueryBuilder) Build() (string,error) {
 	return string(bytes), nil
 }
 
-
 // AddField adds a field to the couchDB query
 func (builder *QueryBuilder) AddField(fields ...string) *QueryBuilder {
 	builder.fields = append(builder.fields, fields...)
 	return builder
 }
-
 
 // AddFilter adds a filter to filter on in the couchDB query
 func (builder *QueryBuilder) AddFilter(field string, value interface{}) *QueryBuilder {
@@ -172,6 +177,13 @@ func (builder *QueryBuilder) SetSkip(skip int) *QueryBuilder {
 	return builder
 }
 
+// SetIndex sets the index value to use
+func (builder *QueryBuilder) SetIndex(index string) *QueryBuilder {
+	builder.index = index
+	builder.hasIndex = true
+	return builder
+}
+
 // AddCondition adds a pre-defined CouchDB condition filter to the CouchDB query
 func (builder *QueryBuilder) AddCondition(field string, condition interface{}) *QueryBuilder {
 	builder.conditions[field] = condition
@@ -181,7 +193,7 @@ func (builder *QueryBuilder) AddCondition(field string, condition interface{}) *
 
 // AddSort adds a field to sort on in the couchDB query
 func (builder *QueryBuilder) AddSort(field string, sortOrder string) *QueryBuilder {
-	sort :=  map[string]string{}
+	sort := map[string]string{}
 	sort[field] = strings.ToLower(sortOrder)
 	builder.sort = append(builder.sort, sort)
 	return builder
@@ -189,7 +201,7 @@ func (builder *QueryBuilder) AddSort(field string, sortOrder string) *QueryBuild
 
 // AddCombination adds a combination to the builder query
 func (builder *QueryBuilder) AddCombination(combinationType CombinationType, filters ...interface{}) *Combination {
-	combination := Combination{Type:combinationType,Builder:builder}
+	combination := Combination{Type: combinationType, Builder: builder}
 
 	for _, filter := range filters {
 		typeName := reflect.TypeOf(filter).Name()
@@ -199,7 +211,7 @@ func (builder *QueryBuilder) AddCombination(combinationType CombinationType, fil
 				combination.Filters = append(combination.Filters, original)
 			}
 		} else {
-			combination.Conditions =  append(combination.Conditions, filter)
+			combination.Conditions = append(combination.Conditions, filter)
 		}
 	}
 
@@ -209,7 +221,7 @@ func (builder *QueryBuilder) AddCombination(combinationType CombinationType, fil
 
 // AddCombination adds a combination to an existing one for nesting
 func (c *Combination) AddCombination(combinationType CombinationType, filters ...interface{}) *Combination {
-	combination := Combination{Type:combinationType}
+	combination := Combination{Type: combinationType}
 
 	// loop through filters and check type, if filter then create custom, if condition add as condition
 	for _, filter := range filters {
@@ -220,7 +232,7 @@ func (c *Combination) AddCombination(combinationType CombinationType, filters ..
 				combination.Filters = append(combination.Filters, original)
 			}
 		} else {
-			combination.Conditions =  append(combination.Conditions, filter)
+			combination.Conditions = append(combination.Conditions, filter)
 		}
 	}
 
@@ -228,7 +240,6 @@ func (c *Combination) AddCombination(combinationType CombinationType, filters ..
 
 	return &combination
 }
-
 
 // addCombinationToRoot converts the combination to a format that is useable by CouchDB
 func addCombinationToRoot(root map[string]interface{}, combination *Combination) {
@@ -248,7 +259,7 @@ func addCombinationToRoot(root map[string]interface{}, combination *Combination)
 		fmt.Println("has child combinations")
 	}
 	for _, child := range combination.Combinations {
-		combinationRoot[combinationType] = addCombinationToParent(combinationRoot[combinationType] ,child)
+		combinationRoot[combinationType] = addCombinationToParent(combinationRoot[combinationType], child)
 	}
 
 	root[combinationType] = combinationRoot[combinationType]
@@ -272,9 +283,6 @@ func addCombinationToParent(parent []interface{}, combination *Combination) []in
 	parent = append(parent, combinationRoot)
 	return parent
 }
-
-
-
 
 // TODO
 //$not	Selector	Matches if the given selector does not match.
