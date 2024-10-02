@@ -216,6 +216,7 @@ func (builder *QueryBuilder) AddCombination(combinationType CombinationType, fil
 	}
 
 	builder.combinations = append(builder.combinations, &combination)
+	builder.hasSelector = true
 	return &combination
 }
 
