@@ -27,7 +27,7 @@ type EqualCondition struct {
 
 // NotEqualCondition The field is not equal to the argument
 type NotEqualCondition struct {
-	Value interface{} `json:"$neq"`
+	Value interface{} `json:"$ne"`
 }
 
 // ExistCondition Check whether the field exists or not, regardless of its value.
@@ -59,4 +59,3 @@ type RegExCondition struct {
 type ModCondition struct {
 	Value [2]int `json:"$mod"`
 }
-
